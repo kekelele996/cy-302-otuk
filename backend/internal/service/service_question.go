@@ -189,11 +189,19 @@ func buildQuestion(id, createdBy uint, req dto.QuestionRequest) (*model.Question
 	if err != nil {
 		return nil, err
 	}
+	points, err := normalizeScoringPoints(req)
+	if err != nil {
+		return nil, err
+	}
 	optionsRaw, err := marshalOptions(options)
 	if err != nil {
 		return nil, err
 	}
 	answerRaw, err := marshalAnswer(answer)
+	if err != nil {
+		return nil, err
+	}
+	pointsRaw, err := marshalScoringPoints(points)
 	if err != nil {
 		return nil, err
 	}
@@ -207,6 +215,7 @@ func buildQuestion(id, createdBy uint, req dto.QuestionRequest) (*model.Question
 		Difficulty:     req.Difficulty,
 		KnowledgePoint: strings.TrimSpace(req.KnowledgePoint),
 		Score:          req.Score,
+		ScoringPoints:  pointsRaw,
 		CreatedBy:      createdBy,
 	}, nil
 }
@@ -311,6 +320,10 @@ func optionHasKey(options []dto.Option, key string) bool {
 func questionToResponse(q *model.Question) *dto.QuestionResponse {
 	options, _ := unmarshalOptions(q.Options)
 	answer, _ := unmarshalAnswer(q.Answer)
+	points, _ := unmarshalScoringPoints(q.ScoringPoints)
+	if points == nil {
+		points = []dto.ScoringPoint{}
+	}
 	return &dto.QuestionResponse{
 		ID:             q.ID,
 		Type:           q.Type,
@@ -321,6 +334,7 @@ func questionToResponse(q *model.Question) *dto.QuestionResponse {
 		Difficulty:     q.Difficulty,
 		KnowledgePoint: q.KnowledgePoint,
 		Score:          q.Score,
+		ScoringPoints:  points,
 		CreatedBy:      q.CreatedBy,
 		CreatedAt:      q.CreatedAt,
 	}

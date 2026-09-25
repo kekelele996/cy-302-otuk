@@ -33,9 +33,13 @@ type AnswerSubmitRequest struct {
 }
 
 // GradeItemRequest grades one subjective answer.
+// Score is the question total (used for legacy whole-question grading).
+// PointScores carries per-rubric awarded scores when the paper snapshot
+// defines scoring points; their sum must equal Score.
 type GradeItemRequest struct {
-	ExamQuestionID uint    `json:"exam_question_id" binding:"required"`
-	Score          float64 `json:"score" binding:"min=0"`
+	ExamQuestionID uint      `json:"exam_question_id" binding:"required"`
+	Score          float64   `json:"score" binding:"min=0"`
+	PointScores    []float64 `json:"point_scores"`
 }
 
 // GradeRequest grades one or more subjective answers.

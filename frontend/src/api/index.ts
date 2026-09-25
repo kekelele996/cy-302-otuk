@@ -113,7 +113,7 @@ export const attemptApi = {
   report(attemptId: number) {
     return http.get<never, ReportResponse>(`/attempts/${attemptId}/report`)
   },
-  grade(attemptId: number, items: { exam_question_id: number; score: number }[]) {
+  grade(attemptId: number, items: { exam_question_id: number; score: number; point_scores?: number[] }[]) {
     return http.put<never, { message: string }>(`/attempts/${attemptId}/grade`, { items })
   }
 }

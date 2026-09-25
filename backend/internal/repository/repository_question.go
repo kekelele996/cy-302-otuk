@@ -59,6 +59,7 @@ func (r *Repository) UpdateQuestion(ctx context.Context, q *model.Question) erro
 		"difficulty":      q.Difficulty,
 		"knowledge_point": q.KnowledgePoint,
 		"score":           q.Score,
+		"scoring_points":  q.ScoringPoints,
 	})
 	if res.Error != nil {
 		return fmt.Errorf("update question: %w", res.Error)

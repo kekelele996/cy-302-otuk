@@ -32,7 +32,14 @@
         </template>
       </el-table-column>
       <el-table-column prop="knowledge_point" label="知识点" width="130" />
-      <el-table-column prop="score" label="分值" width="80" />
+      <el-table-column label="分值" width="110">
+        <template #default="{ row }">
+          <div>{{ row.score }}</div>
+          <div v-if="row.scoring_points && row.scoring_points.length" class="cell-sub">
+            {{ row.scoring_points.length }} 个评分点
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
@@ -101,8 +108,25 @@
         <el-form-item label="知识点">
           <el-input v-model="form.knowledge_point" />
         </el-form-item>
+        <el-form-item v-if="isSubjective" label="评分点">
+          <div style="width: 100%">
+            <div v-if="!form.scoring_points.length" class="hint-text">
+              未设置评分点，将按整题给分（兼容旧题）。
+            </div>
+            <div v-for="(point, idx) in form.scoring_points" :key="idx" class="option-row">
+              <el-input v-model="point.name" placeholder="要点名称，如：第一空/踩分点" style="flex: 1" />
+              <el-input-number v-model="point.score" :min="0.5" :step="0.5" />
+              <el-button link type="danger" @click="form.scoring_points.splice(idx, 1)">删除</el-button>
+            </div>
+            <el-button size="small" @click="form.scoring_points.push({ name: '', score: 1 })">添加评分点</el-button>
+            <span v-if="form.scoring_points.length" class="hint-text">
+              评分点合计：{{ pointsTotal }} 分
+            </span>
+          </div>
+        </el-form-item>
         <el-form-item label="分值">
-          <el-input-number v-model="form.score" :min="0.5" :step="0.5" />
+          <el-input-number v-if="isSubjective && form.scoring_points.length" :model-value="pointsTotal" disabled />
+          <el-input-number v-else v-model="form.score" :min="0.5" :step="0.5" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -114,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { questionApi } from '../api'
 import type { Question, QuestionType } from '../types'
@@ -148,10 +172,15 @@ const form = reactive({
   analysis: '',
   difficulty: 'easy',
   knowledge_point: '',
-  score: 1
+  score: 1,
+  scoring_points: [] as { name: string; score: number }[]
 })
 
 const isChoice = () => ['single', 'multiple', 'true_false'].includes(form.type)
+const isSubjective = computed(() => ['fill_blank', 'short_answer'].includes(form.type))
+const pointsTotal = computed(() =>
+  Math.round(form.scoring_points.reduce((sum, p) => sum + (Number(p.score) || 0), 0) * 100) / 100
+)
 
 function addOption() {
   const idx = form.options.length
@@ -169,6 +198,11 @@ function buildPayload() {
   else if (form.type === 'true_false') answer = form.answerSingle
   else if (form.type === 'fill_blank') answer = form.answerBlanks.filter((b) => b.trim() !== '')
   else answer = form.answerText
+  const score = isSubjective.value && form.scoring_points.length ? pointsTotal.value : form.score
+  const scoringPoints =
+    isSubjective.value && form.scoring_points.length
+      ? form.scoring_points.map((p) => ({ name: p.name.trim(), score: p.score }))
+      : []
   return {
     type: form.type,
     content: form.content,
@@ -177,8 +211,34 @@ function buildPayload() {
     analysis: form.analysis,
     difficulty: form.difficulty as 'easy' | 'medium' | 'hard',
     knowledge_point: form.knowledge_point,
-    score: form.score
+    score,
+    scoring_points: scoringPoints
   }
+}
+
+function validateForm() {
+  if (!isSubjective.value || !form.scoring_points.length) return true
+  const names = new Set<string>()
+  for (const p of form.scoring_points) {
+    if (!p.name.trim()) {
+      ElMessage.error('评分点名称不能为空')
+      return false
+    }
+    if (names.has(p.name.trim())) {
+      ElMessage.error(`评分点名称重复：${p.name.trim()}`)
+      return false
+    }
+    names.add(p.name.trim())
+    if (!(p.score > 0)) {
+      ElMessage.error(`评分点「${p.name}」分值必须大于 0`)
+      return false
+    }
+  }
+  if (pointsTotal.value <= 0) {
+    ElMessage.error('评分点分值合计必须大于 0')
+    return false
+  }
+  return true
 }
 
 function resetForm() {
@@ -193,6 +253,7 @@ function resetForm() {
   form.difficulty = 'easy'
   form.knowledge_point = ''
   form.score = 1
+  form.scoring_points = []
 }
 
 function openCreate() {
@@ -213,11 +274,13 @@ function openEdit(row: Question) {
   form.analysis = row.analysis || ''
   form.difficulty = row.difficulty
   form.knowledge_point = row.knowledge_point
+  form.scoring_points = (row.scoring_points || []).map((p) => ({ name: p.name, score: p.score }))
   form.score = row.score
   dialogVisible.value = true
 }
 
 async function onSave() {
+  if (!validateForm()) return
   saving.value = true
   try {
     const payload = buildPayload()
@@ -279,5 +342,14 @@ onMounted(load)
 .pager {
   margin-top: 16px;
   justify-content: flex-end;
+}
+.hint-text {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  margin-left: 8px;
+}
+.cell-sub {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

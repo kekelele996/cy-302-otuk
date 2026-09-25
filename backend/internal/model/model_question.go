@@ -13,6 +13,9 @@ type Question struct {
 	Difficulty     string    `gorm:"size:16;not null;index" json:"difficulty"`
 	KnowledgePoint string    `gorm:"size:128;not null;index" json:"knowledge_point"`
 	Score          float64   `gorm:"not null;default:1" json:"score"`
+	// ScoringPoints is the JSON snapshot of the question's grading rubric
+	// ([{"name","score"}]); empty for objective questions and legacy questions.
+	ScoringPoints  string    `gorm:"type:text" json:"-"`
 	CreatedBy      uint      `gorm:"index" json:"created_by"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`

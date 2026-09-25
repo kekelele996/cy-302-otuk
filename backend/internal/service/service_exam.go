@@ -42,11 +42,21 @@ func (s *ExamService) Create(ctx context.Context, createdBy uint, req dto.ExamCr
 		}
 		shuffle(questions, rng)
 		for i := 0; i < cfg.Count; i++ {
+			points, err := unmarshalScoringPoints(questions[i].ScoringPoints)
+			if err != nil {
+				return nil, fmt.Errorf("parse question scoring points: %w", err)
+			}
+			snapshot := snapshotScoringPoints(points, questions[i].Score, cfg.Score)
+			pointsRaw, err := marshalScoringPoints(snapshot)
+			if err != nil {
+				return nil, err
+			}
 			items = append(items, model.ExamQuestion{
-				ExamID:     0,
-				QuestionID: questions[i].ID,
-				Score:      cfg.Score,
-				SortOrder:  order,
+				ExamID:         0,
+				QuestionID:     questions[i].ID,
+				Score:          cfg.Score,
+				ScoringPoints:  pointsRaw,
+				SortOrder:      order,
 			})
 			computedTotal += cfg.Score
 			order++

@@ -32,6 +32,11 @@ export interface Option {
 
 export type QuestionType = 'single' | 'multiple' | 'true_false' | 'fill_blank' | 'short_answer'
 
+export interface ScoringPoint {
+  name: string
+  score: number
+}
+
 export interface Question {
   id: number
   type: QuestionType
@@ -42,6 +47,7 @@ export interface Question {
   difficulty: 'easy' | 'medium' | 'hard'
   knowledge_point: string
   score: number
+  scoring_points?: ScoringPoint[]
   created_by?: number
   created_at?: string
 }
@@ -109,6 +115,12 @@ export interface AttemptSummary {
   submitted_at?: string | null
 }
 
+export interface ScoringPointView {
+  name: string
+  score: number
+  earned?: number | null
+}
+
 export interface AttemptQuestionDetail {
   exam_question_id: number
   type: QuestionType
@@ -119,6 +131,7 @@ export interface AttemptQuestionDetail {
   is_correct?: boolean | null
   score: number
   max_score: number
+  scoring_points?: ScoringPointView[]
   analysis?: string
   marked: boolean
   graded: boolean
@@ -145,6 +158,16 @@ export interface TypeScore {
   count: number
 }
 
+export interface ReportQuestionResult {
+  exam_question_id: number
+  type: QuestionType
+  content: string
+  score: number
+  max_score: number
+  graded: boolean
+  points: ScoringPointView[]
+}
+
 export interface ReportResponse {
   attempt_id: number
   exam_id: number
@@ -156,6 +179,7 @@ export interface ReportResponse {
   rank: number
   participants: number
   type_breakdown: TypeScore[]
+  question_results: ReportQuestionResult[]
   submitted_at?: string | null
 }
 

@@ -84,6 +84,18 @@ components:
           type: string
         score:
           type: number
+        scoring_points:
+          type: array
+          description: 填空/简答题的评分点（要点名称 + 分值），仅主观题可设；分值之和必须等于 score
+          items:
+            type: object
+            required: [name, score]
+            properties:
+              name:
+                type: string
+              score:
+                type: number
+                minimum: 0
 
 paths:
   /healthz:

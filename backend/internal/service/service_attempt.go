@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand"
 	"sort"
 	"strings"
@@ -210,6 +211,7 @@ func (s *AttemptService) Submit(ctx context.Context, studentID, attemptID uint) 
 		isObjective := ObjectiveQuestionTypes()[q.Type]
 		var isCorrect *bool
 		score := 0.0
+		var pointScoresRaw string
 		if isObjective {
 			correct := studentAnswer.AnswerText != "" && isCorrectObjective(q.Type, correctAnswer, studentRaw)
 			isCorrect = &correct
@@ -226,6 +228,12 @@ func (s *AttemptService) Submit(ctx context.Context, studentID, attemptID uint) 
 					Status:         constants.WrongUnresolved,
 				})
 			}
+		} else {
+			// Pre-seed per-rubric zeros aligned with the paper snapshot so
+			// grading writes stay aligned even before the teacher acts.
+			if points, pointsErr := unmarshalScoringPoints(it.ScoringPoints); pointsErr == nil && len(points) > 0 {
+				pointScoresRaw, _ = marshalPointScores(make([]float64, len(points)))
+			}
 		}
 		saved := &model.Answer{
 			AttemptID:      attemptID,
@@ -234,6 +242,7 @@ func (s *AttemptService) Submit(ctx context.Context, studentID, attemptID uint) 
 			AnswerText:     studentAnswer.AnswerText,
 			IsCorrect:      isCorrect,
 			Score:          score,
+			PointScores:    pointScoresRaw,
 			Marked:         studentAnswer.Marked,
 		}
 		if err := s.answerRepo.SaveAnswer(ctx, saved); err != nil {
@@ -307,10 +316,46 @@ func (s *AttemptService) Grade(ctx context.Context, teacherID uint, role string,
 		if !exists {
 			continue
 		}
-		if item.Score > eq.Score {
-			return fmt.Errorf("%w: 得分不能超过题目分值 %.2f", ErrValidation, eq.Score)
+		rubric, rubricErr := unmarshalScoringPoints(eq.ScoringPoints)
+		if rubricErr != nil {
+			return fmt.Errorf("load scoring points snapshot: %w", rubricErr)
 		}
-		answer.Score = item.Score
+		if len(rubric) > 0 {
+			// Point-based grading: one awarded score per snapshot rubric item.
+			if len(item.PointScores) != len(rubric) {
+				return fmt.Errorf("%w: 「%s」需要为 %d 个评分点分别录分", ErrValidation, q.Content, len(rubric))
+			}
+			total := 0.0
+			for i, awarded := range item.PointScores {
+				if awarded < 0 {
+					return fmt.Errorf("%w: 评分点「%s」得分不能为负", ErrValidation, rubric[i].Name)
+				}
+				if awarded > rubric[i].Score+scoreEpsilon {
+					return fmt.Errorf("%w: 评分点「%s」得分 %.2f 不能超过该要点分值 %.2f", ErrValidation, rubric[i].Name, awarded, rubric[i].Score)
+				}
+				total += awarded
+			}
+			total = roundScore(total)
+			if math.Abs(total-item.Score) > scoreEpsilon {
+				return fmt.Errorf("%w: 各评分点得分之和 %.2f 与题目总分 %.2f 不一致", ErrValidation, total, item.Score)
+			}
+			if item.Score > eq.Score+scoreEpsilon {
+				return fmt.Errorf("%w: 得分不能超过题目分值 %.2f", ErrValidation, eq.Score)
+			}
+			pointRaw, err := marshalPointScores(item.PointScores)
+			if err != nil {
+				return err
+			}
+			answer.PointScores = pointRaw
+			answer.Score = item.Score
+		} else {
+			// Legacy whole-question grading (old questions without rubric).
+			if item.Score > eq.Score+scoreEpsilon {
+				return fmt.Errorf("%w: 得分不能超过题目分值 %.2f", ErrValidation, eq.Score)
+			}
+			answer.PointScores = ""
+			answer.Score = item.Score
+		}
 		answer.GradedBy = teacherID
 		if err := s.answerRepo.SaveAnswer(ctx, &answer); err != nil {
 			return fmt.Errorf("grade answer: %w", err)
@@ -483,6 +528,32 @@ func (s *AttemptService) Report(ctx context.Context, role string, userID, attemp
 	if objectiveCount > 0 {
 		accuracy = float64(objectiveCorrect) / float64(objectiveCount) * 100
 	}
+
+	// Subjective question results with per-rubric gains/losses, in paper order.
+	orderedItems := orderExamQuestions(items, parseOrder(attempt.QuestionOrder))
+	questionResults := make([]dto.ReportQuestionResult, 0)
+	for _, it := range orderedItems {
+		q, ok := s.findQuestion(ctx, it.QuestionID)
+		if !ok || ObjectiveQuestionTypes()[q.Type] {
+			continue
+		}
+		a := answerMap[it.ID]
+		graded := a.GradedBy != 0
+		views, err := buildScoringPointViews(it.ScoringPoints, a.PointScores, graded)
+		if err != nil {
+			return nil, err
+		}
+		questionResults = append(questionResults, dto.ReportQuestionResult{
+			ExamQuestionID: it.ID,
+			Type:           q.Type,
+			Content:        q.Content,
+			Score:          a.Score,
+			MaxScore:       it.Score,
+			Graded:         graded,
+			Points:         views,
+		})
+	}
+
 	rank, participants := s.ranking(ctx, attempt)
 
 	subjectiveScore := attempt.TotalScore - attempt.ObjectiveScore
@@ -497,6 +568,7 @@ func (s *AttemptService) Report(ctx context.Context, role string, userID, attemp
 		Rank:            rank,
 		Participants:    participants,
 		TypeBreakdown:   breakdown,
+		QuestionResults: questionResults,
 		SubmittedAt:     attempt.SubmittedAt,
 	}, nil
 }
@@ -567,6 +639,10 @@ func (s *AttemptService) buildDetail(ctx context.Context, attempt *model.ExamAtt
 			val := *a.IsCorrect
 			isCorrect = &val
 		}
+		pointViews, err := buildScoringPointViews(it.ScoringPoints, a.PointScores, a.GradedBy != 0)
+		if err != nil {
+			return nil, err
+		}
 		result = append(result, dto.AttemptQuestionDetail{
 			ExamQuestionID: it.ID,
 			Type:           q.Type,
@@ -577,12 +653,40 @@ func (s *AttemptService) buildDetail(ctx context.Context, attempt *model.ExamAtt
 			IsCorrect:      isCorrect,
 			Score:          a.Score,
 			MaxScore:       it.Score,
+			ScoringPoints:  pointViews,
 			Analysis:       q.Analysis,
 			Marked:         a.Marked,
 			Graded:         a.GradedBy != 0,
 		})
 	}
 	return result, nil
+}
+
+// buildScoringPointViews joins the paper rubric snapshot with the awarded
+// per-point scores. Before grading every Earned is nil so callers can show
+// "待批"; legacy items without a rubric return an empty slice.
+func buildScoringPointViews(snapshotRaw, pointScoresRaw string, graded bool) ([]dto.ScoringPointView, error) {
+	points, err := unmarshalScoringPoints(snapshotRaw)
+	if err != nil {
+		return nil, fmt.Errorf("load scoring points snapshot: %w", err)
+	}
+	if len(points) == 0 {
+		return []dto.ScoringPointView{}, nil
+	}
+	earned := unmarshalPointScores(pointScoresRaw)
+	views := make([]dto.ScoringPointView, 0, len(points))
+	for i, p := range points {
+		view := dto.ScoringPointView{Name: p.Name, Score: p.Score}
+		if graded {
+			v := 0.0
+			if i < len(earned) {
+				v = roundScore(earned[i])
+			}
+			view.Earned = &v
+		}
+		views = append(views, view)
+	}
+	return views, nil
 }
 
 func (s *AttemptService) startResponse(ctx context.Context, attempt *model.ExamAttempt, exam *model.Exam) (*dto.AttemptStartResponse, error) {

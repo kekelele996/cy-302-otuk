@@ -18,10 +18,14 @@ type Exam struct {
 }
 
 // ExamQuestion is a question selected into an exam paper.
+// Score is the per-question total score assigned when the paper is generated,
+// and ScoringPoints snapshots the rubric (name + score, scaled to match Score)
+// at that moment. Later edits to the question bank never alter old papers.
 type ExamQuestion struct {
-	ID         uint    `gorm:"primaryKey" json:"id"`
-	ExamID     uint    `gorm:"index;not null" json:"exam_id"`
-	QuestionID uint    `gorm:"index;not null" json:"question_id"`
-	Score      float64 `gorm:"not null" json:"score"`
-	SortOrder  int     `gorm:"not null" json:"sort_order"`
+	ID            uint    `gorm:"primaryKey" json:"id"`
+	ExamID        uint    `gorm:"index;not null" json:"exam_id"`
+	QuestionID    uint    `gorm:"index;not null" json:"question_id"`
+	Score         float64 `gorm:"not null" json:"score"`
+	ScoringPoints string  `gorm:"type:text" json:"scoring_points,omitempty"`
+	SortOrder     int     `gorm:"not null" json:"sort_order"`
 }
