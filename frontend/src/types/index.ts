@@ -32,6 +32,11 @@ export interface Option {
 
 export type QuestionType = 'single' | 'multiple' | 'true_false' | 'fill_blank' | 'short_answer'
 
+export interface RubricPoint {
+  name: string
+  score: number
+}
+
 export interface Question {
   id: number
   type: QuestionType
@@ -42,6 +47,7 @@ export interface Question {
   difficulty: 'easy' | 'medium' | 'hard'
   knowledge_point: string
   score: number
+  rubric?: RubricPoint[]
   created_by?: number
   created_at?: string
 }
@@ -119,6 +125,8 @@ export interface AttemptQuestionDetail {
   is_correct?: boolean | null
   score: number
   max_score: number
+  rubric: RubricPoint[]
+  point_scores: RubricPoint[]
   analysis?: string
   marked: boolean
   graded: boolean
@@ -145,6 +153,24 @@ export interface TypeScore {
   count: number
 }
 
+export interface RubricPointReport {
+  name: string
+  score: number
+  max: number
+  lost: number
+}
+
+export interface SubjectiveReportItem {
+  exam_question_id: number
+  type: QuestionType
+  type_name: string
+  content: string
+  graded: boolean
+  score: number
+  max_score: number
+  points: RubricPointReport[]
+}
+
 export interface ReportResponse {
   attempt_id: number
   exam_id: number
@@ -156,6 +182,7 @@ export interface ReportResponse {
   rank: number
   participants: number
   type_breakdown: TypeScore[]
+  subjective_items: SubjectiveReportItem[]
   submitted_at?: string | null
 }
 

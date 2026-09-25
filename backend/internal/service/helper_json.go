@@ -47,3 +47,27 @@ func unmarshalAnswer(raw string) (any, error) {
 	}
 	return answer, nil
 }
+
+// marshalRubric serializes rubric points; nil becomes an empty list.
+func marshalRubric(points []dto.RubricPoint) (string, error) {
+	if points == nil {
+		points = []dto.RubricPoint{}
+	}
+	b, err := json.Marshal(points)
+	if err != nil {
+		return "", fmt.Errorf("marshal rubric: %w", err)
+	}
+	return string(b), nil
+}
+
+// unmarshalRubric parses stored rubric points; empty input yields an empty list.
+func unmarshalRubric(raw string) ([]dto.RubricPoint, error) {
+	if raw == "" {
+		return []dto.RubricPoint{}, nil
+	}
+	var points []dto.RubricPoint
+	if err := json.Unmarshal([]byte(raw), &points); err != nil {
+		return nil, fmt.Errorf("unmarshal rubric: %w", err)
+	}
+	return points, nil
+}

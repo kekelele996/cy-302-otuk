@@ -28,6 +28,7 @@ type Answer struct {
 	AnswerText     string     `gorm:"type:text" json:"answer_text"`
 	IsCorrect      *bool      `json:"is_correct"`
 	Score          float64    `gorm:"not null;default:0" json:"score"`
+	PointScores    string     `gorm:"type:text" json:"point_scores"`
 	Marked         bool       `gorm:"not null;default:false" json:"marked"`
 	GradedBy       uint       `json:"graded_by"`
 	CreatedAt      time.Time  `json:"created_at"`

@@ -13,11 +13,12 @@ func (r *Repository) SaveAnswer(ctx context.Context, answer *model.Answer) error
 	err := r.db.WithContext(ctx).Where("attempt_id = ? AND exam_question_id = ?", answer.AttemptID, answer.ExamQuestionID).First(&existing).Error
 	if err == nil {
 		if updateErr := r.db.WithContext(ctx).Model(&model.Answer{}).Where("id = ?", existing.ID).Updates(map[string]any{
-			"answer_text": answer.AnswerText,
-			"is_correct":  answer.IsCorrect,
-			"score":       answer.Score,
-			"marked":      answer.Marked,
-			"graded_by":   answer.GradedBy,
+			"answer_text":  answer.AnswerText,
+			"is_correct":   answer.IsCorrect,
+			"score":        answer.Score,
+			"point_scores": answer.PointScores,
+			"marked":       answer.Marked,
+			"graded_by":    answer.GradedBy,
 		}).Error; updateErr != nil {
 			return fmt.Errorf("update answer: %w", updateErr)
 		}

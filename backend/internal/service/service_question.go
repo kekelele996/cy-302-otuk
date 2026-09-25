@@ -197,6 +197,14 @@ func buildQuestion(id, createdBy uint, req dto.QuestionRequest) (*model.Question
 	if err != nil {
 		return nil, err
 	}
+	rubric, err := validateRubric(req)
+	if err != nil {
+		return nil, err
+	}
+	rubricRaw, err := marshalRubric(rubric)
+	if err != nil {
+		return nil, err
+	}
 	return &model.Question{
 		ID:             id,
 		Type:           req.Type,
@@ -207,8 +215,52 @@ func buildQuestion(id, createdBy uint, req dto.QuestionRequest) (*model.Question
 		Difficulty:     req.Difficulty,
 		KnowledgePoint: strings.TrimSpace(req.KnowledgePoint),
 		Score:          req.Score,
+		Rubric:         rubricRaw,
 		CreatedBy:      createdBy,
 	}, nil
+}
+
+// validateRubric checks scoring points for subjective questions. The sum of
+// point scores must equal the question score. Objective types and questions
+// without points return nil (graded as a whole).
+func validateRubric(req dto.QuestionRequest) ([]dto.RubricPoint, error) {
+	if !isSubjectiveType(req.Type) || len(req.Rubric) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	points := make([]dto.RubricPoint, 0, len(req.Rubric))
+	sum := 0.0
+	for _, p := range req.Rubric {
+		name := strings.TrimSpace(p.Name)
+		if name == "" {
+			return nil, fmt.Errorf("%w: 评分点名称不能为空", ErrValidation)
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("%w: 评分点名称重复: %s", ErrValidation, name)
+		}
+		seen[name] = true
+		if p.Score <= 0 {
+			return nil, fmt.Errorf("%w: 评分点「%s」分值必须大于 0", ErrValidation, name)
+		}
+		sum += p.Score
+		points = append(points, dto.RubricPoint{Name: name, Score: p.Score})
+	}
+	if !almostEqual(sum, req.Score) {
+		return nil, fmt.Errorf("%w: 评分点分值之和 %.2f 必须等于题目分值 %.2f", ErrValidation, sum, req.Score)
+	}
+	return points, nil
+}
+
+func isSubjectiveType(qtype string) bool {
+	return qtype == constants.QuestionFillBlank || qtype == constants.QuestionShortAnswer
+}
+
+func almostEqual(a, b float64) bool {
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff < 1e-6
 }
 
 func validateQuestion(req dto.QuestionRequest) ([]dto.Option, any, error) {
@@ -311,6 +363,7 @@ func optionHasKey(options []dto.Option, key string) bool {
 func questionToResponse(q *model.Question) *dto.QuestionResponse {
 	options, _ := unmarshalOptions(q.Options)
 	answer, _ := unmarshalAnswer(q.Answer)
+	rubric, _ := unmarshalRubric(q.Rubric)
 	return &dto.QuestionResponse{
 		ID:             q.ID,
 		Type:           q.Type,
@@ -321,6 +374,7 @@ func questionToResponse(q *model.Question) *dto.QuestionResponse {
 		Difficulty:     q.Difficulty,
 		KnowledgePoint: q.KnowledgePoint,
 		Score:          q.Score,
+		Rubric:         rubric,
 		CreatedBy:      q.CreatedBy,
 		CreatedAt:      q.CreatedAt,
 	}

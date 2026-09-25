@@ -45,7 +45,8 @@ type ExamResponse struct {
 
 // ExamQuestionResponse is one paper question (teacher/admin view includes answer).
 type ExamQuestionResponse struct {
-	ID      uint    `json:"id"`
-	Score   float64 `json:"score"`
+	ID      uint          `json:"id"`
+	Score   float64       `json:"score"`
+	Rubric  []RubricPoint `json:"rubric"`
 	Question QuestionResponse `json:"question"`
 }

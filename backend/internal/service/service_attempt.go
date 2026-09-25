@@ -307,10 +307,21 @@ func (s *AttemptService) Grade(ctx context.Context, teacherID uint, role string,
 		if !exists {
 			continue
 		}
-		if item.Score > eq.Score {
-			return fmt.Errorf("%w: 得分不能超过题目分值 %.2f", ErrValidation, eq.Score)
+		rubric, _ := unmarshalRubric(eq.Rubric)
+		if len(rubric) > 0 {
+			total, awarded, err := gradeByRubric(rubric, item.PointScores, eq.Score)
+			if err != nil {
+				return err
+			}
+			answer.Score = total
+			answer.PointScores = awarded
+		} else {
+			if item.Score > eq.Score {
+				return fmt.Errorf("%w: 得分不能超过题目分值 %.2f", ErrValidation, eq.Score)
+			}
+			answer.Score = item.Score
+			answer.PointScores = ""
 		}
-		answer.Score = item.Score
 		answer.GradedBy = teacherID
 		if err := s.answerRepo.SaveAnswer(ctx, &answer); err != nil {
 			return fmt.Errorf("grade answer: %w", err)
@@ -329,6 +340,48 @@ func (s *AttemptService) Grade(ctx context.Context, teacherID uint, role string,
 		return fmt.Errorf("update attempt: %w", err)
 	}
 	return nil
+}
+
+// gradeByRubric validates per-point scores against the paper's rubric snapshot
+// and returns the summed question score plus the awarded points to persist.
+// Any point score above its max, or a total above the question max, is rejected.
+func gradeByRubric(rubric []dto.RubricPoint, inputs []dto.GradePointRequest, maxTotal float64) (float64, string, error) {
+	inputMap := make(map[string]float64, len(inputs))
+	for _, in := range inputs {
+		name := strings.TrimSpace(in.Name)
+		if _, dup := inputMap[name]; dup {
+			return 0, "", fmt.Errorf("%w: 评分点「%s」重复提交", ErrValidation, name)
+		}
+		if in.Score < 0 {
+			return 0, "", fmt.Errorf("%w: 评分点「%s」得分不能为负", ErrValidation, name)
+		}
+		inputMap[name] = in.Score
+	}
+	total := 0.0
+	awarded := make([]dto.RubricPoint, 0, len(rubric))
+	for _, p := range rubric {
+		score, ok := inputMap[p.Name]
+		if !ok {
+			return 0, "", fmt.Errorf("%w: 缺少评分点「%s」的得分", ErrValidation, p.Name)
+		}
+		if score > p.Score {
+			return 0, "", fmt.Errorf("%w: 评分点「%s」得分 %.2f 超过该要点满分 %.2f", ErrValidation, p.Name, score, p.Score)
+		}
+		delete(inputMap, p.Name)
+		total += score
+		awarded = append(awarded, dto.RubricPoint{Name: p.Name, Score: score})
+	}
+	for name := range inputMap {
+		return 0, "", fmt.Errorf("%w: 评分点「%s」不在该题的评分点中", ErrValidation, name)
+	}
+	if total > maxTotal+1e-6 {
+		return 0, "", fmt.Errorf("%w: 评分点合计 %.2f 超过题目分值 %.2f", ErrValidation, total, maxTotal)
+	}
+	raw, err := marshalRubric(awarded)
+	if err != nil {
+		return 0, "", err
+	}
+	return round2(total), raw, nil
 }
 
 // Detail returns the full review of an attempt.
@@ -485,6 +538,10 @@ func (s *AttemptService) Report(ctx context.Context, role string, userID, attemp
 	}
 	rank, participants := s.ranking(ctx, attempt)
 
+	subjectiveItems := buildSubjectiveReport(items, answerMap, func(questionID uint) (model.Question, bool) {
+		return s.findQuestion(ctx, questionID)
+	})
+
 	subjectiveScore := attempt.TotalScore - attempt.ObjectiveScore
 	return &dto.ReportResponse{
 		AttemptID:       attempt.ID,
@@ -497,8 +554,50 @@ func (s *AttemptService) Report(ctx context.Context, role string, userID, attemp
 		Rank:            rank,
 		Participants:    participants,
 		TypeBreakdown:   breakdown,
+		SubjectiveItems: subjectiveItems,
 		SubmittedAt:     attempt.SubmittedAt,
 	}, nil
+}
+
+// buildSubjectiveReport lists every subjective question of the paper with its
+// awarded score per rubric point. Ungraded answers are flagged via Graded=false
+// so the frontend can show 待批.
+func buildSubjectiveReport(items []model.ExamQuestion, answerMap map[uint]model.Answer, findQuestion func(uint) (model.Question, bool)) []dto.SubjectiveReportItem {
+	result := make([]dto.SubjectiveReportItem, 0)
+	for _, it := range items {
+		q, ok := findQuestion(it.QuestionID)
+		if !ok || ObjectiveQuestionTypes()[q.Type] {
+			continue
+		}
+		a := answerMap[it.ID]
+		rubric, _ := unmarshalRubric(it.Rubric)
+		awarded, _ := unmarshalRubric(a.PointScores)
+		awardedMap := make(map[string]float64, len(awarded))
+		for _, p := range awarded {
+			awardedMap[p.Name] = p.Score
+		}
+		points := make([]dto.RubricPointReport, 0, len(rubric))
+		for _, p := range rubric {
+			earned := awardedMap[p.Name]
+			points = append(points, dto.RubricPointReport{
+				Name:  p.Name,
+				Score: earned,
+				Max:   p.Score,
+				Lost:  round2(p.Score - earned),
+			})
+		}
+		result = append(result, dto.SubjectiveReportItem{
+			ExamQuestionID: it.ID,
+			Type:           q.Type,
+			TypeName:       questionTypeName(q.Type),
+			Content:        q.Content,
+			Graded:         a.GradedBy != 0,
+			Score:          a.Score,
+			MaxScore:       it.Score,
+			Points:         points,
+		})
+	}
+	return result
 }
 
 // ListGrading returns submitted attempts of an exam for teacher grading.
@@ -567,6 +666,8 @@ func (s *AttemptService) buildDetail(ctx context.Context, attempt *model.ExamAtt
 			val := *a.IsCorrect
 			isCorrect = &val
 		}
+		rubric, _ := unmarshalRubric(it.Rubric)
+		pointScores, _ := unmarshalRubric(a.PointScores)
 		result = append(result, dto.AttemptQuestionDetail{
 			ExamQuestionID: it.ID,
 			Type:           q.Type,
@@ -577,6 +678,8 @@ func (s *AttemptService) buildDetail(ctx context.Context, attempt *model.ExamAtt
 			IsCorrect:      isCorrect,
 			Score:          a.Score,
 			MaxScore:       it.Score,
+			Rubric:         rubric,
+			PointScores:    pointScores,
 			Analysis:       q.Analysis,
 			Marked:         a.Marked,
 			Graded:         a.GradedBy != 0,

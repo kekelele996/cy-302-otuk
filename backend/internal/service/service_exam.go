@@ -46,6 +46,7 @@ func (s *ExamService) Create(ctx context.Context, createdBy uint, req dto.ExamCr
 				ExamID:     0,
 				QuestionID: questions[i].ID,
 				Score:      cfg.Score,
+				Rubric:     snapshotRubric(questions[i], cfg.Score),
 				SortOrder:  order,
 			})
 			computedTotal += cfg.Score
@@ -210,7 +211,8 @@ func (s *ExamService) ListPaperQuestions(ctx context.Context, role string, userI
 		if !ok {
 			continue
 		}
-		result = append(result, dto.ExamQuestionResponse{ID: it.ID, Score: it.Score, Question: *questionToResponse(&q)})
+		rubric, _ := unmarshalRubric(it.Rubric)
+		result = append(result, dto.ExamQuestionResponse{ID: it.ID, Score: it.Score, Rubric: rubric, Question: *questionToResponse(&q)})
 	}
 	return result, nil
 }
@@ -218,6 +220,36 @@ func (s *ExamService) ListPaperQuestions(ctx context.Context, role string, userI
 // CountQuestions exposes question count for exam metadata.
 func (s *ExamService) CountQuestions(ctx context.Context, id uint) (int64, error) {
 	return s.repo.CountExamQuestions(ctx, id)
+}
+
+// snapshotRubric freezes the question's scoring points into the paper at exam
+// creation time, scaled so the points sum to the paper score. Later edits to
+// the bank question therefore never change existing papers or grades.
+func snapshotRubric(q model.Question, paperScore float64) string {
+	points, err := unmarshalRubric(q.Rubric)
+	if err != nil || len(points) == 0 || q.Score <= 0 || paperScore <= 0 {
+		return ""
+	}
+	scaled := make([]dto.RubricPoint, 0, len(points))
+	acc := 0.0
+	for i, p := range points {
+		var s float64
+		if i == len(points)-1 {
+			s = round2(paperScore - acc) // last point absorbs rounding drift
+		} else {
+			s = round2(p.Score * paperScore / q.Score)
+		}
+		if s < 0 {
+			s = 0
+		}
+		acc = round2(acc + s)
+		scaled = append(scaled, dto.RubricPoint{Name: p.Name, Score: s})
+	}
+	raw, err := marshalRubric(scaled)
+	if err != nil {
+		return ""
+	}
+	return raw
 }
 
 func (s *ExamService) toResponse(ctx context.Context, exam *model.Exam) (*dto.ExamResponse, error) {

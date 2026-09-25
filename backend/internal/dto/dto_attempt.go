@@ -32,10 +32,19 @@ type AnswerSubmitRequest struct {
 	Marked         *bool `json:"marked"`
 }
 
-// GradeItemRequest grades one subjective answer.
+// GradePointRequest grades one rubric point of a subjective answer.
+type GradePointRequest struct {
+	Name  string  `json:"name" binding:"required"`
+	Score float64 `json:"score" binding:"min=0"`
+}
+
+// GradeItemRequest grades one subjective answer. When the paper question has a
+// rubric snapshot, PointScores is required and Score is derived from it;
+// otherwise Score is used directly (whole-question grading).
 type GradeItemRequest struct {
-	ExamQuestionID uint    `json:"exam_question_id" binding:"required"`
-	Score          float64 `json:"score" binding:"min=0"`
+	ExamQuestionID uint                `json:"exam_question_id" binding:"required"`
+	Score          float64             `json:"score" binding:"min=0"`
+	PointScores    []GradePointRequest `json:"point_scores" binding:"omitempty,dive"`
 }
 
 // GradeRequest grades one or more subjective answers.

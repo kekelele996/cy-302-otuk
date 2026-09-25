@@ -89,6 +89,14 @@
         </el-table-column>
         <el-table-column prop="question.content" label="题干" min-width="220" show-overflow-tooltip />
         <el-table-column prop="score" label="分值" width="70" />
+        <el-table-column label="评分点快照" min-width="160">
+          <template #default="{ row }">
+            <template v-if="row.rubric && row.rubric.length">
+              <div v-for="p in row.rubric" :key="p.name">{{ p.name }}（{{ p.score }} 分）</div>
+            </template>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="question.analysis" label="解析" min-width="120" show-overflow-tooltip />
       </el-table>
     </el-dialog>
@@ -119,7 +127,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { examApi } from '../api'
 import { useAuthStore } from '../stores/auth'
-import type { Exam, PaperQuestionConfig, ExamStatResponse } from '../types'
+import type { Exam, PaperQuestionConfig, ExamStatResponse, Question, RubricPoint } from '../types'
 
 const typeLabels: Record<string, string> = {
   single: '单选题',
@@ -143,7 +151,7 @@ const total = ref(0)
 const dialogVisible = ref(false)
 const questionsVisible = ref(false)
 const statsVisible = ref(false)
-const questions = ref<{ id: number; score: number; question: { type: string; content: string; analysis?: string } }[]>([])
+const questions = ref<{ id: number; score: number; rubric: RubricPoint[]; question: Question }[]>([])
 const stats = ref<ExamStatResponse | null>(null)
 const query = reactive({ page: 1, page_size: 10, status: '', keyword: '' })
 

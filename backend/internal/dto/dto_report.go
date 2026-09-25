@@ -16,18 +16,20 @@ type AttemptSummary struct {
 
 // AttemptQuestionDetail is one question in an attempt review.
 type AttemptQuestionDetail struct {
-	ExamQuestionID uint      `json:"exam_question_id"`
-	Type           string    `json:"type"`
-	Content        string    `json:"content"`
-	Options        []Option  `json:"options"`
-	StudentAnswer  any       `json:"student_answer"`
-	CorrectAnswer  any       `json:"correct_answer"`
-	IsCorrect      *bool     `json:"is_correct"`
-	Score          float64   `json:"score"`
-	MaxScore       float64   `json:"max_score"`
-	Analysis       string    `json:"analysis"`
-	Marked         bool      `json:"marked"`
-	Graded         bool      `json:"graded"`
+	ExamQuestionID uint          `json:"exam_question_id"`
+	Type           string        `json:"type"`
+	Content        string        `json:"content"`
+	Options        []Option      `json:"options"`
+	StudentAnswer  any           `json:"student_answer"`
+	CorrectAnswer  any           `json:"correct_answer"`
+	IsCorrect      *bool         `json:"is_correct"`
+	Score          float64       `json:"score"`
+	MaxScore       float64       `json:"max_score"`
+	Rubric         []RubricPoint `json:"rubric"`
+	PointScores    []RubricPoint `json:"point_scores"`
+	Analysis       string        `json:"analysis"`
+	Marked         bool          `json:"marked"`
+	Graded         bool          `json:"graded"`
 }
 
 // AttemptDetail is the full review of one attempt.
@@ -53,19 +55,40 @@ type TypeScore struct {
 	Count int     `json:"count"`
 }
 
+// RubricPointReport shows earned and lost score for one rubric point.
+type RubricPointReport struct {
+	Name  string  `json:"name"`
+	Score float64 `json:"score"`
+	Max   float64 `json:"max"`
+	Lost  float64 `json:"lost"`
+}
+
+// SubjectiveReportItem is one subjective question in the score report.
+type SubjectiveReportItem struct {
+	ExamQuestionID uint                `json:"exam_question_id"`
+	Type           string              `json:"type"`
+	TypeName       string              `json:"type_name"`
+	Content        string              `json:"content"`
+	Graded         bool                `json:"graded"`
+	Score          float64             `json:"score"`
+	MaxScore       float64             `json:"max_score"`
+	Points         []RubricPointReport `json:"points"`
+}
+
 // ReportResponse is the score analysis shown after grading.
 type ReportResponse struct {
-	AttemptID      uint        `json:"attempt_id"`
-	ExamID         uint        `json:"exam_id"`
-	ExamTitle      string      `json:"exam_title"`
-	TotalScore     float64     `json:"total_score"`
-	ObjectiveScore float64     `json:"objective_score"`
-	SubjectiveScore float64    `json:"subjective_score"`
-	Accuracy       float64     `json:"accuracy"`
-	Rank           int         `json:"rank"`
-	Participants   int         `json:"participants"`
-	TypeBreakdown  []TypeScore `json:"type_breakdown"`
-	SubmittedAt    *time.Time  `json:"submitted_at"`
+	AttemptID      uint                   `json:"attempt_id"`
+	ExamID         uint                   `json:"exam_id"`
+	ExamTitle      string                 `json:"exam_title"`
+	TotalScore     float64                `json:"total_score"`
+	ObjectiveScore float64                `json:"objective_score"`
+	SubjectiveScore float64               `json:"subjective_score"`
+	Accuracy       float64                `json:"accuracy"`
+	Rank           int                    `json:"rank"`
+	Participants   int                    `json:"participants"`
+	TypeBreakdown  []TypeScore            `json:"type_breakdown"`
+	SubjectiveItems []SubjectiveReportItem `json:"subjective_items"`
+	SubmittedAt    *time.Time             `json:"submitted_at"`
 }
 
 // GradeListResponse lists attempts waiting for subjective grading.

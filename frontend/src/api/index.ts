@@ -13,6 +13,7 @@ import type {
   PracticeQuestion,
   Question,
   ReportResponse,
+  RubricPoint,
   UserProfile,
   WrongQuestionItem
 } from '../types'
@@ -81,7 +82,7 @@ export const examApi = {
     return http.delete<never, { message: string }>(`/exams/${id}`)
   },
   questions(id: number) {
-    return http.get<never, { id: number; score: number; question: Question }[]>(`/exams/${id}/questions`)
+    return http.get<never, { id: number; score: number; rubric: RubricPoint[]; question: Question }[]>(`/exams/${id}/questions`)
   },
   stats(id: number) {
     return http.get<never, ExamStatResponse>(`/exams/${id}/stats`)
@@ -113,7 +114,7 @@ export const attemptApi = {
   report(attemptId: number) {
     return http.get<never, ReportResponse>(`/attempts/${attemptId}/report`)
   },
-  grade(attemptId: number, items: { exam_question_id: number; score: number }[]) {
+  grade(attemptId: number, items: { exam_question_id: number; score?: number; point_scores?: RubricPoint[] }[]) {
     return http.put<never, { message: string }>(`/attempts/${attemptId}/grade`, { items })
   }
 }

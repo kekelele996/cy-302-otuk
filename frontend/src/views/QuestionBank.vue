@@ -33,6 +33,12 @@
       </el-table-column>
       <el-table-column prop="knowledge_point" label="知识点" width="130" />
       <el-table-column prop="score" label="分值" width="80" />
+      <el-table-column label="评分点" width="90">
+        <template #default="{ row }">
+          <span v-if="isSubjectiveType(row.type)">{{ row.rubric?.length ? `${row.rubric.length} 个要点` : '整题给分' }}</span>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
@@ -104,6 +110,21 @@
         <el-form-item label="分值">
           <el-input-number v-model="form.score" :min="0.5" :step="0.5" />
         </el-form-item>
+        <el-form-item v-if="isSubjective" label="评分点">
+          <div style="width: 100%">
+            <div v-for="(point, idx) in form.rubric" :key="idx" class="option-row">
+              <el-input v-model="point.name" placeholder="要点名称" style="flex: 1" />
+              <el-input-number v-model="point.score" :min="0.5" :step="0.5" style="width: 140px" />
+              <el-button link type="danger" @click="form.rubric.splice(idx, 1)">删除</el-button>
+            </div>
+            <el-button size="small" @click="form.rubric.push({ name: '', score: 1 })">添加评分点</el-button>
+            <div v-if="form.rubric.length" class="rubric-sum" :class="{ mismatch: rubricMismatch }">
+              评分点合计 {{ rubricSum }} 分 / 题目分值 {{ form.score }} 分
+              <span v-if="rubricMismatch">（两者必须相等）</span>
+            </div>
+            <div v-else class="rubric-tip">未设置评分点时，该题按整题给分</div>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -114,10 +135,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { questionApi } from '../api'
-import type { Question, QuestionType } from '../types'
+import type { Question, QuestionType, RubricPoint } from '../types'
 
 const typeLabels: Record<string, string> = {
   single: '单选题',
@@ -148,10 +169,16 @@ const form = reactive({
   analysis: '',
   difficulty: 'easy',
   knowledge_point: '',
-  score: 1
+  score: 1,
+  rubric: [] as RubricPoint[]
 })
 
 const isChoice = () => ['single', 'multiple', 'true_false'].includes(form.type)
+const isSubjective = computed(() => form.type === 'fill_blank' || form.type === 'short_answer')
+const isSubjectiveType = (t: QuestionType) => t === 'fill_blank' || t === 'short_answer'
+
+const rubricSum = computed(() => Math.round(form.rubric.reduce((acc, p) => acc + (p.score || 0), 0) * 100) / 100)
+const rubricMismatch = computed(() => form.rubric.length > 0 && Math.abs(rubricSum.value - form.score) > 1e-6)
 
 function addOption() {
   const idx = form.options.length
@@ -169,6 +196,9 @@ function buildPayload() {
   else if (form.type === 'true_false') answer = form.answerSingle
   else if (form.type === 'fill_blank') answer = form.answerBlanks.filter((b) => b.trim() !== '')
   else answer = form.answerText
+  const rubric = isSubjective.value
+    ? form.rubric.filter((p) => p.name.trim() !== '').map((p) => ({ name: p.name.trim(), score: p.score }))
+    : []
   return {
     type: form.type,
     content: form.content,
@@ -177,7 +207,8 @@ function buildPayload() {
     analysis: form.analysis,
     difficulty: form.difficulty as 'easy' | 'medium' | 'hard',
     knowledge_point: form.knowledge_point,
-    score: form.score
+    score: form.score,
+    rubric
   }
 }
 
@@ -193,6 +224,7 @@ function resetForm() {
   form.difficulty = 'easy'
   form.knowledge_point = ''
   form.score = 1
+  form.rubric = []
 }
 
 function openCreate() {
@@ -214,10 +246,19 @@ function openEdit(row: Question) {
   form.difficulty = row.difficulty
   form.knowledge_point = row.knowledge_point
   form.score = row.score
+  form.rubric = (row.rubric || []).map((p) => ({ name: p.name, score: p.score }))
   dialogVisible.value = true
 }
 
 async function onSave() {
+  if (isSubjective.value && form.rubric.some((p) => p.name.trim() === '')) {
+    ElMessage.error('评分点名称不能为空')
+    return
+  }
+  if (rubricMismatch.value) {
+    ElMessage.error(`评分点合计 ${rubricSum.value} 分与题目分值 ${form.score} 分不一致`)
+    return
+  }
   saving.value = true
   try {
     const payload = buildPayload()
@@ -275,6 +316,19 @@ onMounted(load)
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
+}
+.rubric-sum {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--el-color-success);
+}
+.rubric-sum.mismatch {
+  color: var(--el-color-danger);
+}
+.rubric-tip {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 .pager {
   margin-top: 16px;

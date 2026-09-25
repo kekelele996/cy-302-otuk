@@ -111,3 +111,118 @@ func TestValidateQuestion(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRubric(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     dto.QuestionRequest
+		wantLen int
+		wantErr bool
+	}{
+		{
+			name: "valid rubric sums to score",
+			req: dto.QuestionRequest{
+				Type:  constants.QuestionShortAnswer,
+				Score: 5,
+				Rubric: []dto.RubricPoint{
+					{Name: "概念正确", Score: 2},
+					{Name: "举例恰当", Score: 3},
+				},
+			},
+			wantLen: 2,
+			wantErr: false,
+		},
+		{
+			name: "valid fill blank rubric",
+			req: dto.QuestionRequest{
+				Type:  constants.QuestionFillBlank,
+				Score: 4,
+				Rubric: []dto.RubricPoint{
+					{Name: "第一空", Score: 2},
+					{Name: "第二空", Score: 2},
+				},
+			},
+			wantLen: 2,
+			wantErr: false,
+		},
+		{
+			name: "sum mismatch rejected",
+			req: dto.QuestionRequest{
+				Type:  constants.QuestionShortAnswer,
+				Score: 5,
+				Rubric: []dto.RubricPoint{
+					{Name: "要点一", Score: 2},
+					{Name: "要点二", Score: 2},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty name rejected",
+			req: dto.QuestionRequest{
+				Type:  constants.QuestionShortAnswer,
+				Score: 2,
+				Rubric: []dto.RubricPoint{
+					{Name: "  ", Score: 2},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "duplicate name rejected",
+			req: dto.QuestionRequest{
+				Type:  constants.QuestionShortAnswer,
+				Score: 4,
+				Rubric: []dto.RubricPoint{
+					{Name: "要点", Score: 2},
+					{Name: "要点", Score: 2},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "non positive point score rejected",
+			req: dto.QuestionRequest{
+				Type:  constants.QuestionShortAnswer,
+				Score: 2,
+				Rubric: []dto.RubricPoint{
+					{Name: "要点", Score: 0},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "no rubric falls back to whole question grading",
+			req: dto.QuestionRequest{
+				Type:  constants.QuestionShortAnswer,
+				Score: 5,
+			},
+			wantLen: 0,
+			wantErr: false,
+		},
+		{
+			name: "objective question ignores rubric",
+			req: dto.QuestionRequest{
+				Type:  constants.QuestionSingle,
+				Score: 2,
+				Rubric: []dto.RubricPoint{
+					{Name: "要点", Score: 2},
+				},
+			},
+			wantLen: 0,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			points, err := validateRubric(tt.req)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateRubric() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if len(points) != tt.wantLen {
+				t.Fatalf("validateRubric() returned %d points, want %d", len(points), tt.wantLen)
+			}
+		})
+	}
+}

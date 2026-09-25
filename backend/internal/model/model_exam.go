@@ -23,5 +23,6 @@ type ExamQuestion struct {
 	ExamID     uint    `gorm:"index;not null" json:"exam_id"`
 	QuestionID uint    `gorm:"index;not null" json:"question_id"`
 	Score      float64 `gorm:"not null" json:"score"`
+	Rubric     string  `gorm:"type:text" json:"rubric"`
 	SortOrder  int     `gorm:"not null" json:"sort_order"`
 }

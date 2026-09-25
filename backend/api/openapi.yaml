@@ -84,6 +84,35 @@ components:
           type: string
         score:
           type: number
+        rubric:
+          type: array
+          description: 主观题评分点（要点名称+分值），各评分点之和必须等于题目分值；为空表示按整题给分
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              score:
+                type: number
+    GradeItem:
+      type: object
+      required: [exam_question_id]
+      properties:
+        exam_question_id:
+          type: integer
+        score:
+          type: number
+          description: 整题得分（试卷题目无评分点快照时使用）
+        point_scores:
+          type: array
+          description: 按评分点录分（试卷题目有评分点快照时必填），自动汇总为题目得分
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              score:
+                type: number
 
 paths:
   /healthz:
@@ -158,7 +187,32 @@ paths:
       responses:
         '201':
           description: 创建成功
-  /api/v1/exams:
+  /api/v1/attempts/{id}/grade:
+    put:
+      summary: 批改主观题（按评分点录分并自动汇总，超过要点或题目满分将被拒绝）
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/GradeItem'
+      responses:
+        '200':
+          description: 批改成功
     post:
       summary: 创建考试并自动组卷
       security:
